@@ -200,9 +200,25 @@ function instance.zap(self, col)
    local group = self:region(start)
    if #group < 2 then return false
    else
+      self:decrement_blocks(group)
       for _, p in ipairs(group) do self:at(p, 0) end
       return true
    end
+end
+
+function instance.gravity(self)
+   local moved
+   repeat
+      moved = false
+      for p in self:each(0,0,self.width, self.height-1) do
+         local v = self:at(p)
+         if v ~= 0 and self:at(p+point(0,1)) == 0 then
+            moved = true
+            self:at(p+point(0,1), v)
+            self:at(p, 0)
+         end
+      end
+   until not moved
 end
 
 ----------------------------------------
@@ -239,6 +255,7 @@ function instance.wild_drop(self, col)
          local reg = self:region(start) -- Zap it
          if #reg >= wild.wild then -- Did we zap enough?
             -- Remove them and don't freeze it
+            self:decrement_blocks(reg)
             for _,p in ipairs(reg) do self:at(p, 0) end
             zapped = true
          end
@@ -257,19 +274,29 @@ function instance.freeze_wild(self, pt)
    self:at(pt, {block = w.wild-2})
 end
 
-function instance.gravity(self)
-   local moved
-   repeat
-      moved = false
-      for p in self:each(0,0,self.width, self.height-1) do
-         local v = self:at(p)
-         if v ~= 0 and self:at(p+point(0,1)) == 0 then
-            moved = true
-            self:at(p+point(0,1), v)
-            self:at(p, 0)
+----------------------------------------
+-- Blocks
+
+local function is_block(val)
+   return val and type(val) == 'table' and val.block
+end
+
+function instance.decrement_blocks(self, group)
+   local dec = {}
+
+   for _, p in ipairs(group) do
+      for _, n in ipairs(self:neighbors(p)) do
+         if is_block(self:at(n)) and not dec[tostring(n)] then
+            dec[tostring(n)] = n
          end
       end
-   until not moved
+   end
+
+   for _, bp in pairs(dec) do
+      local b = self:at(bp)
+      b.block = b.block - 1
+      if b.block == 0 then self:at(bp, math.random(4)) end
+   end
 end
 
 ----------------------------------------
@@ -297,16 +324,22 @@ function instance.push_row(self)
 end
 
 ----------------------------------------
+-- Tests
+
+local tests = {}
+local mod = _M
 
 function test()
-   local mod = _M
+   for _,t in next, tests do t() end
+end
 
-   -- Is it a subclass
+function tests.subclass()
    local dm = mod.new()
    assert(dm.width == 8)
    assert(dm.slice)
+end
 
-   -- drop
+function tests.drop()
    local dm2 = mod.new()
    dm2:drop(2,2)
    assert(dm2:at(2, 7) == 2)
@@ -314,36 +347,41 @@ function test()
    dm2:clear(0)
    dm2:drop(5,1)
    assert(dm2:at(5, 9) == 1)
+end
 
-   -- neighbors
+function tests.neighbors()
    local dm3 = mod.new()
    local n = dm3:neighbors(0,0)
    assert(#n == 2)
    assert(n[1] == point(1, 0))
    assert(n[2] == point(0, 1))
    assert(#dm3:neighbors(3,3) == 4)
+end
 
-   -- region
+function tests.region()
    local dm4 = mod.new()
    local r = dm4:region(0,0)
    assert(#r == 64)
+end
 
-   -- lost
+function tests.lost()
    local dm5 = mod.new()
    for n=1, dm5.height-3 do dm5:drop(7,1) end
    assert(not dm5:lost())
    dm5:drop(7,2)
    assert(dm5:lost())
+end
 
-   -- push_row
+function tests.push_row()
    local dm6 = mod.new()
    for n=1, dm6.height-3 do dm6:push_row() end
    local g = dm6:region(0,0)
    assert(#g == dm6.width)
    dm6:push_row()
    assert(dm6:top_row_full())
+end
 
-   -- zap
+function tests.zap()
    local dm7 = mod.new()
    dm7:clear(0)
    dm7.queue = {1, 2, 2, 3}
@@ -352,16 +390,18 @@ function test()
    assert(#dm7:region(0,0) == 78)
    dm7:turn(0)
    assert(#dm7:region(0,0) == 79)
+end
 
-   -- gravity
+function tests.gravity()
    local dm8 = mod.new()
    dm8:clear(0)
    dm8:at(3,3,1)
    dm8:gravity()
    assert(dm8:at(3,3) == 0)
    assert(dm8:at(3,9) == 1)
+end
 
-   -- Wilds
+function tests.wilds()
    local dw = mod.new()
    dw.queue[1] = 3
    dw.queue[2] = {wild=3}
@@ -381,13 +421,43 @@ function test()
    dw(0) ; dw(2) ; dw(1)
    assert(#(dw:region(0,0)) == 80)
 
-
    dw:clear(0)
    dw:at(0,9,1) ; dw:at(1,9,1)
    dw:at(3,9,2) ; dw:at(4,9,2)
    dw.queue = {{wild=3}, 1}
    dw(2)
    assert(#(dw:region(0,0)) == 80)
+end
+
+function tests.blocks()
+   local dm = mod.new()
+   dm:clear(0)
+
+   dm.queue = { {block=2}, 1, 1, 1}
+   dm(0) ; dm(0) ; dm(0)
+
+   assert(#(dm:region(0,0)) == 79)
+   assert(dm:at(0,9).block == 1)
+
+   ----------
+
+   dm:clear(0)
+
+   dm.queue = { {block=1}, 1, 1, 1}
+   dm(0) ; dm(0) ; dm(0)
+
+   assert(#(dm:region(0,0)) == 79)
+   assert(type(dm:at(0,9)) == 'number')
+end
+
+function tests.wild_blocks()
+   local dm = mod.new()
+   dm:clear(0)
+
+   dm.queue = { {block=2}, 1, 1, {wild=3}, 1}
+   dm(0) ; dm(1) ; dm(3) ; dm(2)
+   assert(#(dm:region(0,0)) == 79)
+   assert(dm:at(0,9).block == 1)   
 end
 
 test()
