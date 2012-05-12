@@ -39,6 +39,13 @@ If a dropped piece lands on a piece of the same color, that piece (and all the o
 
 After your queue of pieces ends, a fresh row is pushed on to the bottom, and the queue is refilled.
 
+Wilds and blocks:
+-----------------
+
+Sometimes you'll get to drop numbers (white on black). These are wilds. They will match any and all groups they land next to, such that the group (including the wild) is that many pieces.
+
+If a wild lands and doesn't destroy anything, then as punishment for wasting it you get a block (number, black on white). A block has a number on it (based on the original size of the wild). Each group that is zapped adjacent to a block reduces its number by one, and when it hits zero it becomes a normal piece again.
+
 End of the game:
 ----------------
 
