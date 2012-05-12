@@ -12,12 +12,22 @@ utils.subclass(_M, map)
 instance.width = 8
 instance.height = 10
 
-instance.colors = {0xc4, 0x28, 0xe2, 0x18}
-instance.bg = color.bg(0xe9)
-
 function instance.init(self)
    self = super.init(self)
    self:clear(0)
+
+   -- What we select pieces to drop from
+   self.drop_pool = {1,1,1,1,
+                     2,2,2,2,
+                     3,3,3,3,
+                     4,4,4,4,
+                     {wild=3}}
+
+   -- What we select pieces in pushed rows from
+   self.push_pool = {1,1,1,
+                     2,2,2,
+                     3,3,3,
+                     4,4,4}
 
    for p in self:each(0, 8, 8, 2) do
       self:at(p, math.random(4))
@@ -31,18 +41,40 @@ end
 function instance.refill_queue(self)
    self.queue = {}
    for n=1,self.width do
-      self.queue[n] = math.random(4)
+      self.queue[n] = self:random_element(self.drop_pool)
+   end
+end
+
+function instance.random_element(self, arr)
+   local el = arr[math.random(#arr)]
+   if type(el) == 'table' then
+      local c = {}
+      for k,v in pairs(el) do c[k]=v end
+      return c
+   else return el end
+end
+
+local function render(c)
+   local colors = {0xc4, 0x28, 0xe2, 0x18}
+   local bg = color.bg(0xe9)
+
+   if type(c) == 'table' then
+      if c.wild then
+         return bg .. color.fg.WHITE .. c.wild .. color.reset
+      elseif c.block then
+         return color.bg.WHITE .. color.fg.black .. c.block .. color.reset
+      end
+   elseif type(c) == 'number' then
+      if c == 0 then
+         return bg .. ' ' .. color.reset
+      else
+         return bg .. color.fg(colors[c]) .. 'o' .. color.reset
+      end
    end
 end
 
 function instance.to_s(self, x, y)
-   local c = self:at(x, y)
-
-   if c == 0 then
-      return self.bg .. ' ' .. color.reset
-   else
-      return self.bg .. color.fg(self.colors[c]) .. 'o' .. color.reset
-   end
+   return render(self:at(x, y))
 end
 
 function instance.drop(self, col, value)
@@ -62,7 +94,7 @@ end
 function mt.__tostring(self)
    local s = color.reset .. "\n"
    for _,q in ipairs(self.queue) do
-      s = s .. self.bg .. color.fg(self.colors[q]) .. 'o' .. color.reset
+      s = s .. render(q)
    end
    s = s .. "\n" .. ('-'):rep(self.width) .. "\n"
 
@@ -134,7 +166,12 @@ function instance.turn(self, col)
    local val = table.remove(self.queue, 1)
    self:drop(col, val)
 
-   self:zap(col)
+   if type(val) == 'table' then
+      if val.wild then self:wild_drop(col) end
+   else
+      self:zap(col)
+   end
+
    self:gravity()
 
    if #self.queue == 0 then
@@ -144,6 +181,9 @@ function instance.turn(self, col)
       return not self:top_row_full()
    end
 end
+
+----------------------------------------
+-- Normal zaps
 
 function instance.zap(self, col)
    assert(col >= 0 and col < self.width, "Column out of bounds")
@@ -165,6 +205,58 @@ function instance.zap(self, col)
    end
 end
 
+----------------------------------------
+-- Wild drops
+
+local function is_wild(val)
+   return val and type(val) == 'table' and val.wild
+end
+
+function instance.wild_drop(self, col)
+   assert(col >= 0 and col < self.width, "Column out of bounds")
+
+   local start = nil
+   for y=0,self.height do
+      if self:at(col, y) ~= 0 then
+         start = point(col, y)
+         break
+      end
+   end
+   assert(start, "Column empty")
+
+   local wild = self:at(start)
+   local below = self:at(start+point(0,1))
+   assert(is_wild(wild), "Column has no wild")
+
+   local nbrs = self:neighbors(start)
+   local zapped = false
+
+   for _, n in ipairs(nbrs) do -- For each neighbor
+      local val = self:at(n)
+      -- If it's a normal cell...
+      if type(val) == 'number' and val ~= 0 then
+         self:at(start, val) -- put a clone here
+         local reg = self:region(start) -- Zap it
+         if #reg >= wild.wild then -- Did we zap enough?
+            -- Remove them and don't freeze it
+            for _,p in ipairs(reg) do self:at(p, 0) end
+            zapped = true
+         end
+      end
+   end
+
+   if not zapped then -- Didn't match anything, freeze it
+      self:at(start, wild)
+      self:freeze_wild(start)
+   end
+end
+
+function instance.freeze_wild(self, pt)
+   local w = self:at(pt)
+   assert(pt and is_wild(w), "Point isn't a wild")
+   self:at(pt, {block = w.wild-2})
+end
+
 function instance.gravity(self)
    local moved
    repeat
@@ -179,6 +271,9 @@ function instance.gravity(self)
       end
    until not moved
 end
+
+----------------------------------------
+-- Pushing rows
 
 function instance.top_row_full(self)
    for p in self:each(0, 0, self.width, 1) do
@@ -265,6 +360,34 @@ function test()
    dm8:gravity()
    assert(dm8:at(3,3) == 0)
    assert(dm8:at(3,9) == 1)
+
+   -- Wilds
+   local dw = mod.new()
+   dw.queue[1] = 3
+   dw.queue[2] = {wild=3}
+   dw:clear(0)
+   dw(0) ; dw(0)
+   local r = dw:region(0,0)
+   assert(#r == 78)
+   assert(dw:at(0,8).block == 1)
+
+   dw:clear(0)
+   dw.queue = {3,2,3, {wild=3}, 1}
+   dw(0) ; dw(1) ; dw(1) ; dw(0)
+   assert(#(dw:region(0,0)) == 79)
+
+   dw:clear(0)
+   dw.queue = {2, 2, {wild=3}, 1}
+   dw(0) ; dw(2) ; dw(1)
+   assert(#(dw:region(0,0)) == 80)
+
+
+   dw:clear(0)
+   dw:at(0,9,1) ; dw:at(1,9,1)
+   dw:at(3,9,2) ; dw:at(4,9,2)
+   dw.queue = {{wild=3}, 1}
+   dw(2)
+   assert(#(dw:region(0,0)) == 80)
 end
 
 test()
