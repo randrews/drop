@@ -17,6 +17,7 @@ int luaopen_kb(lua_State *L){
     initscr(); /* Start curses */
     raw(); /* Turn off line buffering */
     keypad(stdscr, TRUE); /* Grab ALL kbd input */
+    set_escdelay(25); /* Shorten delay after ESC key to something reasonable */
     refresh(); /* Store screen state so endwin works */
 	endwin(); /* Leave curses mode */
 

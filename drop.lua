@@ -24,10 +24,7 @@ function instance.init(self)
                      {wild=3}}
 
    -- What we select pieces in pushed rows from
-   self.push_pool = {1,1,1,
-                     2,2,2,
-                     3,3,3,
-                     4,4,4}
+   self.push_pool = {1,2,3,4}
 
    for p in self:each(0, 8, 8, 2) do
       self:at(p, math.random(4))
@@ -75,6 +72,10 @@ end
 
 function instance.to_s(self, x, y)
    return render(self:at(x, y))
+end
+
+function instance.valid_column(self, col)
+   return col >= 0 and col < self.width and self:at(col,0) == 0
 end
 
 function instance.drop(self, col, value)

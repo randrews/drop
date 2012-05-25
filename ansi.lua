@@ -26,7 +26,7 @@ function instance.run(self)
          self.column = self.column - 1
       elseif cmd == 'r' and self.column < self.game.width-1 then
          self.column = self.column + 1
-      elseif cmd == 'd' then
+      elseif cmd == 'd' and self.game:valid_column(self.column) then
          self.game(self.column)
       end
    until cmd == 'q'
