@@ -5,6 +5,7 @@ module(..., package.seeall)
 require 'map'
 require 'color'
 require 'utils'
+require 'score'
 
 utils.class(_M)
 utils.subclass(_M, map)
@@ -14,6 +15,7 @@ instance.height = 10
 
 function instance.init(self)
    self = super.init(self)
+   self.score = score.new()
    self:clear(0)
 
    -- What we select pieces to drop from
@@ -99,7 +101,9 @@ function mt.__tostring(self)
    end
    s = s .. "\n" .. ('-'):rep(self.width) .. "\n"
 
-   return s .. map.mt.__tostring(self) .. color.reset
+   s = s .. map.mt.__tostring(self) .. color.reset
+   s = s .. color.move(10, 1) .. 'Score: ' .. self.score.score .. color.move(1, 13)
+   return s
 end
 
 function mt.__call(self, col)
@@ -199,6 +203,8 @@ function instance.zap(self, col)
    assert(start, "Column empty")
 
    local group = self:region(start)
+   self.score:drop(self, group)
+
    if #group < 2 then return false
    else
       self:decrement_blocks(group)
